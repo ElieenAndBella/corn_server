@@ -223,9 +223,9 @@ func handleGateway(c *gin.Context) {
 	longTermKey, _ := c.Get("longTermKey")
 
 	var reqBody struct {
-		Target string            `json:"target"`
-		Param  string            `json:"p,omitempty"`      // Optional parameter
-		Params map[string]string `json:"params,omitempty"` // New field for variable-length parameters
+		Target string   `json:"target"`
+		Param  string   `json:"p,omitempty"`      // Optional parameter
+		Params []string `json:"params,omitempty"` // New field for variable-length string array parameters
 	}
 
 	if err := c.ShouldBindJSON(&reqBody); err != nil {
@@ -278,9 +278,7 @@ func handleGateway(c *gin.Context) {
 			return
 		}
 		keys := make([]string, 0, len(reqBody.Params)+1)
-		for k := range reqBody.Params {
-			keys = append(keys, k)
-		}
+		keys = append(keys, reqBody.Params...)
 		keys = append(keys, "secret")
 		sort.Strings(keys)
 		dataToEncrypt = keys
