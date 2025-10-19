@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -13,16 +14,20 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/crypto/pbkdf2"
 )
 
-// --- Helper Functions / Services ---
-
-const ipCacheTTL = 24 * time.Hour // IP 地址缓存的有效期
+// --- KDF and Encryption Constants ---
+const (
+	saltSize         = 8
+	pbkdf2Iterations = 4096
+	ipCacheTTL       = 24 * time.Hour // IP 地址缓存的有效期
+)
 
 // getGeoInfoForIP 调用外部服务获取 IP 的地理位置，并使用 Redis 进行缓存
 func getGeoInfoForIP(ip string) (*GeoInfo, error) {
-	// 对于本地测试，IP 可能是 127.0.0.1，这无法定位，直接返回模拟数据
-	if ip == "127.0.0.1" {
+	// 对于本地测试，IP 可能是 127.0.0.1 或 ::1，这无法定位，直接返回模拟数据
+	if ip == "127.0.0.1" || ip == "::1" {
 		log.Println("检测到本地 IP，返回模拟地理位置")
 		return &GeoInfo{
 			Status:     "success",
@@ -82,9 +87,19 @@ func getGeoInfoForIP(ip string) (*GeoInfo, error) {
 	return &geoInfo, nil
 }
 
-// encrypt 使用 AES-GCM 加密数据
-func encrypt(plaintext []byte, key []byte) (string, error) {
-	block, err := aes.NewCipher(key)
+// encrypt 使用 PBKDF2 派生密钥，然后使用 AES-GCM 加密数据
+func encrypt(plaintext []byte, password []byte) (string, error) {
+	// 1. 生成一个随机的 salt
+	salt := make([]byte, saltSize)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		return "", err
+	}
+
+	// 2. 使用 PBKDF2 从 password 和 salt 派生出密钥
+	derivedKey := pbkdf2.Key(password, salt, pbkdf2Iterations, 32, sha256.New)
+
+	// 3. 使用派生密钥进行 AES-GCM 加密
+	block, err := aes.NewCipher(derivedKey)
 	if err != nil {
 		return "", err
 	}
@@ -99,8 +114,14 @@ func encrypt(plaintext []byte, key []byte) (string, error) {
 		return "", err
 	}
 
+	// gcm.Seal 会将 nonce 附加到密文的开头
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	return base64.StdEncoding.EncodeToString(ciphertext), nil
+
+	// 4. 将 salt 附加到 [nonce + ciphertext] 的最前面
+	finalPayload := append(salt, ciphertext...)
+
+	// 5. 对最终的 payload 进行 Base64 编码
+	return base64.StdEncoding.EncodeToString(finalPayload), nil
 }
 
 // decrypt 使用 AES-GCM 解密数据 (此函数在服务器端不使用，仅为客户端实现提供参考)

@@ -10,11 +10,19 @@ import (
 // --- Configuration ---
 
 var (
-	jwtSecretKey  string
-	redisAddress  string
-	redisPassword string
-	redisDB       int
-	tokenLifetime = time.Hour * 12 // 这个可以保持不变
+	jwtSecretKey       string
+	redisAddress       string
+	redisPassword      string
+	redisDB            int
+	tokenLifetime      = time.Hour * 12 // 这个可以保持不变
+	appIntegritySecret string
+	productsUrl        string
+	roundUrl           string
+	universalUrl       string
+	wannengUrl         string
+	clientSecretKey    string
+	clientSecretValue  string
+	anotherSecretString string
 )
 
 // init 函数在包初始化时自动执行，非常适合用来加载配置
@@ -31,6 +39,15 @@ func init() {
 	} else {
 		redisDB = db
 	}
+
+	appIntegritySecret = getEnv("APP_INTEGRITY_SECRET", "a-very-secret-string-for-app-integrity")
+	productsUrl = getEnv("PRODUCTS_URL", "https://shop.3839.com/html/js/products.js")
+	roundUrl = getEnv("ROUND_URL", "https://shop.3839.com/html/js/classify_24.js")
+	universalUrl = getEnv("UNIVERSAL_URL", "https://act.3839.com/n/hykb/universal/ajax.php")
+	wannengUrl = getEnv("WANNENG_URL", "https://act.3839.com/n/hykb/wanneng/ajax.php")
+	clientSecretKey = getEnv("CLIENT_SECRET_KEY", "secret")
+	clientSecretValue = getEnv("CLIENT_SECRET_VALUE", "c1714e41e5a907874c59a4d81a8486ea")
+	anotherSecretString = getEnv("ANOTHER_SECRET_STRING", "hbktahqbyihfiidc")
 
 	log.Println("配置已从环境变量加载")
 }

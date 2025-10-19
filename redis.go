@@ -32,19 +32,24 @@ func initRedis() {
 
 // setupInitialKeys 在 Redis 中设置一个测试用的长期 Key
 func setupInitialKeys() {
-	// 我们用 Hash 来存储 Key 的信息，"location" 字段用于风控
-	// 初始时，location 为空
-	key := "VALID_KEY_123"
+	// 我们用 Hash 来存储 Key 的信息，"province" 和 "cities" 字段用于风控
+	// 初始时，字段值为空
+	key := "CF67355A3333E6E143439161ADC2D82E"
 	exists, err := rdb.Exists(ctx, key).Result()
 	if err != nil {
-		log.Printf("检查 Key 时出错: %v", err)
+		log.Printf("检查 Key '%s' 时出错: %v", key, err)
 		return
 	}
 	if exists == 0 {
-		err := rdb.HSet(ctx, key, "location", "").Err()
-		if err != nil {
-			log.Fatalf("设置初始 Key 失败: %v", err)
+		// 使用新格式创建 Key
+		fields := map[string]any{
+			"province": "",
+			"cities":   "",
 		}
-		log.Printf("测试 Key '%s' 已在 Redis 中创建", key)
+		err := rdb.HSet(ctx, key, fields).Err()
+		if err != nil {
+			log.Fatalf("设置初始 Key '%s' 失败: %v", key, err)
+		}
+		log.Printf("测试 Key '%s' 已使用新格式在 Redis 中创建", key)
 	}
 }

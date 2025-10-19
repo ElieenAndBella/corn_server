@@ -22,9 +22,13 @@ func main() {
 
 	// 受保护的 API 组
 	apiGroup := router.Group("/api")
-	apiGroup.Use(authMiddleware()) // 应用 JWT 认证中间件
+	apiGroup.Use(authMiddleware())       // 应用 JWT 认证中间件
+	apiGroup.Use(appIntegrityMiddleware()) // 应用客户端完整性校验中间件
 	{
 		apiGroup.GET("/profile", handleProfile)
+		apiGroup.GET("/string", handleString)
+		apiGroup.GET("/array", handleArray)
+		apiGroup.POST("/v1/gateway", handleGateway)
 	}
 
 	// 4. 启动服务器
