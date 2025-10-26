@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -51,52 +52,77 @@ func handleValidation(c *gin.Context) {
 	currentProvince := geoInfo.RegionName
 	currentCity := geoInfo.City
 
-	storedProvince := keyData["province"]
+	storedProvinces := keyData["provinces"]
 	storedCities := keyData["cities"]
+	isWhitelisted := keyData["whitelisted"] == "true"
 
-	// --- 核心风控逻辑 ---
-	if storedProvince == "" { // a. 首次使用，绑定地区
-		fields := map[string]any{"province": currentProvince, "cities": currentCity}
-		if err := rdb.HSet(ctx, longTermKey, fields).Err(); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to bind location"})
-			return
+	// --- 核心风控逻辑 (V2) ---
+	var provinceList []string
+	if storedProvinces != "" {
+		provinceList = strings.Split(storedProvinces, ",")
+	}
+
+	var cityList []string
+	if storedCities != "" {
+		cityList = strings.Split(storedCities, ",")
+	}
+
+	if isWhitelisted {
+		// 白名单用户: 记录所有使用过的省市，不封禁
+		log.Printf("Key '%s' 是白名单用户，跳过IP风控检查。", longTermKey)
+		needsUpdate := false
+		if !slices.Contains(provinceList, currentProvince) {
+			provinceList = append(provinceList, currentProvince)
+			needsUpdate = true
 		}
-		log.Printf("Key '%s' 首次使用，已绑定省份: %s, 城市: %s", longTermKey, currentProvince, currentCity)
-
-	} else if storedProvince != currentProvince { // b. 省份不匹配，封禁
-		log.Printf("安全警报: Key '%s' 尝试跨省使用。绑定省份: '%s', 当前省份: '%s'。执行封禁。", longTermKey, storedProvince, currentProvince)
-		rdb.HSet(ctx, longTermKey, "status", "banned")
-		c.JSON(http.StatusForbidden, gin.H{"error": "Security risk: Access from a different province is not allowed. This key has been banned."})
-		return
-
-	} else { // c. 省份匹配，检查城市
-		var cityList []string
-		if storedCities != "" {
-			cityList = strings.Split(storedCities, ",")
+		if !slices.Contains(cityList, currentCity) {
+			cityList = append(cityList, currentCity)
+			needsUpdate = true
 		}
 
-		isKnownCity := false
-		for _, city := range cityList {
-			if city == currentCity {
-				isKnownCity = true
-				break
+		if needsUpdate {
+			newProvinces := strings.Join(provinceList, ",")
+			newCities := strings.Join(cityList, ",")
+			fields := map[string]any{"provinces": newProvinces, "cities": newCities}
+			if err := rdb.HSet(ctx, longTermKey, fields).Err(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update location for whitelisted key"})
+				return
 			}
+			log.Printf("Whitelisted key '%s' 已更新位置信息。省份: [%s], 城市: [%s]", longTermKey, newProvinces, newCities)
 		}
 
-		if !isKnownCity { // 发现新城市
-			if len(cityList) < 2 { // c1. 城市数量未满2个，添加新城市
-				log.Printf("Key '%s' 在新城市 '%s' 使用。当前城市列表: [%s]。允许访问。", longTermKey, currentCity, storedCities)
-				newCityList := append(cityList, currentCity)
-				newCities := strings.Join(newCityList, ",")
-				if err := rdb.HSet(ctx, longTermKey, "cities", newCities).Err(); err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update city list"})
+	} else {
+		// 非白名单用户: 严格执行原始风控逻辑
+		if len(provinceList) == 0 { // a. 首次使用，绑定地区
+			fields := map[string]any{"provinces": currentProvince, "cities": currentCity}
+			if err := rdb.HSet(ctx, longTermKey, fields).Err(); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to bind location"})
+				return
+			}
+			log.Printf("Key '%s' 首次使用，已绑定省份: %s, 城市: %s", longTermKey, currentProvince, currentCity)
+
+		} else if provinceList[0] != currentProvince { // b. 省份不匹配 (只认第一个省份)，封禁
+			log.Printf("安全警报: Key '%s' 尝试跨省使用。绑定省份: '%s', 当前省份: '%s'。执行封禁。", longTermKey, provinceList[0], currentProvince)
+			rdb.HSet(ctx, longTermKey, "status", "banned")
+			c.JSON(http.StatusForbidden, gin.H{"error": "Security risk: Access from a different province is not allowed. This key has been banned."})
+			return
+		} else { // c. 省份匹配，检查城市
+			isKnownCity := slices.Contains(cityList, currentCity)
+			if !isKnownCity { // 发现新城市
+				if len(cityList) < 3 { // c1. 城市数量未满3个，添加新城市
+					log.Printf("Key '%s' 在新城市 '%s' 使用。当前城市列表: [%s]。允许访问。", longTermKey, currentCity, storedCities)
+					newCityList := append(cityList, currentCity)
+					newCities := strings.Join(newCityList, ",")
+					if err := rdb.HSet(ctx, longTermKey, "cities", newCities).Err(); err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update city list"})
+						return
+					}
+				} else { // c2. 城市数量已满，封禁
+					log.Printf("安全警报: Key '%s' 尝试在第四个城市 '%s' 使用。已绑定城市: [%s]。执行封禁。", longTermKey, currentCity, storedCities)
+					rdb.HSet(ctx, longTermKey, "status", "banned")
+					c.JSON(http.StatusForbidden, gin.H{"error": "Security risk: Access from more than 3 cities is not allowed. This key has been banned."})
 					return
 				}
-			} else { // c2. 城市数量已满，封禁
-				log.Printf("安全警报: Key '%s' 尝试在第三个城市 '%s' 使用。已绑定城市: [%s]。执行封禁。", longTermKey, currentCity, storedCities)
-				rdb.HSet(ctx, longTermKey, "status", "banned")
-				c.JSON(http.StatusForbidden, gin.H{"error": "Security risk: Access from more than 2 cities is not allowed. This key has been banned."})
-				return
 			}
 		}
 	}
@@ -115,106 +141,6 @@ func handleValidation(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"token": tokenString})
-}
-
-// handleProfile 一个受保护的示例 API，返回加密后的用户信息
-func handleProfile(c *gin.Context) {
-	// 从中间件设置的 context 中获取长期 Key
-	longTermKey, exists := c.Get("longTermKey")
-	if !exists {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not find user key in context"})
-		return
-	}
-
-	// 1. 准备原始数据
-	profileData := gin.H{
-		"user":      longTermKey,
-		"email":     "user@example.com",
-		"createdAt": time.Now().Format(time.RFC3339),
-	}
-	jsonData, err := json.Marshal(profileData)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize profile data"})
-		return
-	}
-
-	// 2. 加密数据
-	encryptionKey := []byte(longTermKey.(string))
-	if len(encryptionKey) != 32 {
-		key := make([]byte, 32)
-		copy(key, encryptionKey)
-		encryptionKey = key
-	}
-
-	encryptedPayload, err := encrypt(jsonData, encryptionKey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Encryption failed: %v", err)})
-		return
-	}
-
-	// 3. 返回加密后的数据
-	c.JSON(http.StatusOK, EncryptedResponse{Payload: encryptedPayload})
-}
-
-// handleString an example protected API that returns an encrypted string
-func handleString(c *gin.Context) {
-	longTermKey, _ := c.Get("longTermKey")
-
-	// 1. Prepare raw data (a simple string)
-	// Note: even a raw string is marshaled into a JSON string (e.g., "\"hello\"")
-	stringData := "This is a test string from the server."
-	jsonData, err := json.Marshal(stringData)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize string data"})
-		return
-	}
-
-	// 2. Encrypt data
-	encryptionKey := []byte(longTermKey.(string))
-	if len(encryptionKey) != 32 {
-		key := make([]byte, 32)
-		copy(key, encryptionKey)
-		encryptionKey = key
-	}
-
-	encryptedPayload, err := encrypt(jsonData, encryptionKey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Encryption failed: %v", err)})
-		return
-	}
-
-	// 3. Return encrypted data
-	c.JSON(http.StatusOK, EncryptedResponse{Payload: encryptedPayload})
-}
-
-// handleArray an example protected API that returns an encrypted array of strings
-func handleArray(c *gin.Context) {
-	longTermKey, _ := c.Get("longTermKey")
-
-	// 1. Prepare raw data (a slice of strings)
-	arrayData := []string{"apple", "banana", "cherry"}
-	jsonData, err := json.Marshal(arrayData)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize array data"})
-		return
-	}
-
-	// 2. Encrypt data
-	encryptionKey := []byte(longTermKey.(string))
-	if len(encryptionKey) != 32 {
-		key := make([]byte, 32)
-		copy(key, encryptionKey)
-		encryptionKey = key
-	}
-
-	encryptedPayload, err := encrypt(jsonData, encryptionKey)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Encryption failed: %v", err)})
-		return
-	}
-
-	// 3. Return encrypted data
-	c.JSON(http.StatusOK, EncryptedResponse{Payload: encryptedPayload})
 }
 
 // handleGateway is a generic endpoint for fetching UI components like menus.
@@ -264,6 +190,30 @@ func handleGateway(c *gin.Context) {
 			"wanneng":   wannengUrl,
 		}
 
+	// target "2b": Fetches the remote farm configuration Extract for the client.
+	case "2b":
+		switch reqBody.Param {
+		case "jzo2":
+			dataToEncrypt = extractRe
+		case "io12":
+			dataToEncrypt = extractS
+		default:
+			c.JSON(http.StatusNotFound, gin.H{"error": "Unknown module parameter"})
+			return
+		}
+
+	// target "c4": Fetches the remote farm configuration URLs for the client.
+	case "c4":
+		dataToEncrypt = farmUrls
+
+	// target "i18": Fetches the GameUrls for client.
+	case "i18":
+		dataToEncrypt = gameUrls
+
+	// target "oioioi": Fetches the GameParams for client.
+	case "oioioi":
+		dataToEncrypt = gameParams
+
 	// target "e5": Fetches a secret key/value pair for client-side use.
 	case "e5":
 		dataToEncrypt = map[string]string{
@@ -286,6 +236,22 @@ func handleGateway(c *gin.Context) {
 	// target "f6": Fetches another secret string.
 	case "f6":
 		dataToEncrypt = anotherSecretString
+
+	// target "f1": Fetches act, onclick query string.
+	case "f1":
+		dataToEncrypt = actOnClickString
+
+	// target "f3": Fetches pageToken, pageRandomStr, xiaoyouxiInfo string.
+	case "f111":
+		dataToEncrypt = []string{pageTokenString, pageRandomStrString, xiaoyouxiInfoString}
+
+	// target "t": Fetches getVarJsonValue Regexp string.
+	case "t":
+		dataToEncrypt = []string{getVarJsonValueUnQuoted}
+
+	// target "tt": Fetches getVarValue Regexp string.
+	case "tt":
+		dataToEncrypt = []string{getVarValueQuoted, getVarValueUnQuoted}
 
 	// target "d4": Fetches and processes external round data.
 	case "d4":
@@ -318,6 +284,7 @@ func handleGateway(c *gin.Context) {
 	}
 
 	// --- Encryption (same logic as other handlers) ---
+	log.Printf("本次响应: %v", dataToEncrypt)
 	jsonData, err := json.Marshal(dataToEncrypt)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize data"})

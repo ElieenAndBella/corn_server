@@ -10,19 +10,31 @@ import (
 // --- Configuration ---
 
 var (
-	jwtSecretKey       string
-	redisAddress       string
-	redisPassword      string
-	redisDB            int
-	tokenLifetime      = time.Hour * 12 // 这个可以保持不变
-	appIntegritySecret string
-	productsUrl        string
-	roundUrl           string
-	universalUrl       string
-	wannengUrl         string
-	clientSecretKey    string
-	clientSecretValue  string
-	anotherSecretString string
+	jwtSecretKey            string
+	redisAddress            string
+	redisPassword           string
+	redisDB                 int
+	tokenLifetime           = time.Hour * 12 // 这个可以保持不变
+	appIntegritySecret      string
+	productsUrl             string
+	roundUrl                string
+	universalUrl            string
+	wannengUrl              string
+	clientSecretKey         string
+	clientSecretValue       string
+	anotherSecretString     string
+	actOnClickString        string
+	pageTokenString         string
+	pageRandomStrString     string
+	xiaoyouxiInfoString     string
+	getVarValueQuoted       string
+	getVarValueUnQuoted     string
+	getVarJsonValueUnQuoted string
+	farmUrls                []string
+	extractRe               string
+	extractS                string
+	gameUrls                []string
+	gameParams              []string
 )
 
 // init 函数在包初始化时自动执行，非常适合用来加载配置
@@ -41,13 +53,43 @@ func init() {
 	}
 
 	appIntegritySecret = getEnv("APP_INTEGRITY_SECRET", "a-very-secret-string-for-app-integrity")
-	productsUrl = getEnv("PRODUCTS_URL", "https://shop.3839.com/html/js/products.js")
-	roundUrl = getEnv("ROUND_URL", "https://shop.3839.com/html/js/classify_24.js")
-	universalUrl = getEnv("UNIVERSAL_URL", "https://act.3839.com/n/hykb/universal/ajax.php")
-	wannengUrl = getEnv("WANNENG_URL", "https://act.3839.com/n/hykb/wanneng/ajax.php")
-	clientSecretKey = getEnv("CLIENT_SECRET_KEY", "secret")
-	clientSecretValue = getEnv("CLIENT_SECRET_VALUE", "c1714e41e5a907874c59a4d81a8486ea")
-	anotherSecretString = getEnv("ANOTHER_SECRET_STRING", "hbktahqbyihfiidc")
+	productsUrl = "https://shop.3839.com/html/js/products.js"
+	roundUrl = "https://shop.3839.com/html/js/classify_24.js"
+	universalUrl = "https://act.3839.com/n/hykb/universal/ajax.php"
+	wannengUrl = "https://act.3839.com/n/hykb/wanneng/ajax.php"
+	clientSecretKey = "secret"
+	clientSecretValue = "c1714e41e5a907874c59a4d81a8486ea"
+	anotherSecretString = "hbktahqbyihfiidc"
+	actOnClickString = ".task-prize a.daily_before1_btn_"
+	pageTokenString = "pageToken"
+	pageRandomStrString = "pageRandomStr"
+	xiaoyouxiInfoString = "xiaoyouxiInfo"
+	getVarValueQuoted = `var\s+%s\s*=\s*(['"])([^'"]*)(['"])`
+	getVarValueUnQuoted = `var\s+%s\s*=\s*([^;\r\n]+)`
+	getVarJsonValueUnQuoted = `var\s+%s\s*=\s*({[^\r\n]+});`
+
+	farmUrls = []string{
+		"https://huodong3.3839.com/n/hykb/cornfarm/index.php?imm=0",
+		"https://huodong3.3839.com/n/hykb/cornfarm/ajax_daily.php",
+		"https://huodong3.3839.com/n/hykb/cornfarm/ajax.php",
+		"https://huodong3.3839.com/n/hykb/cornfarm/ajax_plant.php",
+		"https://api.3839app.com/kuaibao/android/api.cloudgame.php",
+		"https://huodong3.3839.com/n/hykb/cornfarm/ajax_sign.php",
+	}
+
+	gameUrls = []string{
+		"https://huodong3.3839.com/n/hykb/cfxyx/ajax.php",
+		"https://api.3839app.com/kuaibao/android/api.php",
+		"https://api.3839app.com/kuaibao/android/api.cloudgame.php",
+		"https://api.3839app.com/cdn/android/ranktop-home-1577-type-mini-page-1-level-2.htm",
+	}
+
+	gameParams = []string{
+		"login", "1", "CheckData", "2", "checkRealName", "RecordPlaytime", "OpenXyx", "LingPrize",
+	}
+
+	extractRe = `[&?]comm_id=([^&]+)`
+	extractS = `"s":\s*"?([^"]+)"?`
 
 	log.Println("配置已从环境变量加载")
 }

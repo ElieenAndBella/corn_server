@@ -21,7 +21,7 @@ import (
 const (
 	saltSize         = 8
 	pbkdf2Iterations = 4096
-	ipCacheTTL       = 24 * time.Hour // IP 地址缓存的有效期
+	ipCacheTTL       = 120 * time.Hour // IP 地址缓存的有效期
 )
 
 // getGeoInfoForIP 调用外部服务获取 IP 的地理位置，并使用 Redis 进行缓存
@@ -122,35 +122,4 @@ func encrypt(plaintext []byte, password []byte) (string, error) {
 
 	// 5. 对最终的 payload 进行 Base64 编码
 	return base64.StdEncoding.EncodeToString(finalPayload), nil
-}
-
-// decrypt 使用 AES-GCM 解密数据 (此函数在服务器端不使用，仅为客户端实现提供参考)
-func decrypt(ciphertext string, key []byte) ([]byte, error) {
-	data, err := base64.StdEncoding.DecodeString(ciphertext)
-	if err != nil {
-		return nil, err
-	}
-
-	block, err := aes.NewCipher(key)
-	if err != nil {
-		return nil, err
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, err
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(data) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-
-	nonce, ciphertextBytes := data[:nonceSize], data[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertextBytes, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return plaintext, nil
 }
