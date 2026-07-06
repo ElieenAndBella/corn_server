@@ -13,8 +13,9 @@ var (
 	jwtSecretKey            string
 	redisAddress            string
 	redisPassword           string
-	redisDB                 int
-	tokenLifetime           = time.Hour * 12 // 这个可以保持不变
+	swordRedisDB            int
+	apkRedisDB              int
+	tokenLifetime           = time.Hour * 12
 	appIntegritySecret      string
 	productsUrl             string
 	roundUrl                string
@@ -35,6 +36,14 @@ var (
 	extractS                string
 	gameUrls                []string
 	gameParams              []string
+
+	// PostgreSQL config
+	postgresHost     string
+	postgresPort     string
+	postgresUser     string
+	postgresPassword string
+	postgresDbname   string
+	taskStartID      int
 )
 
 // init 函数在包初始化时自动执行，非常适合用来加载配置
@@ -47,10 +56,13 @@ func init() {
 	db, err := strconv.Atoi(dbStr)
 	if err != nil {
 		log.Printf("无效的 REDIS_DB 值 '%s'，将使用默认值 0。错误: %v", dbStr, err)
-		redisDB = 0
+		swordRedisDB = 0
 	} else {
-		redisDB = db
+		swordRedisDB = db
 	}
+
+	// Temporary Method
+	apkRedisDB = 6
 
 	appIntegritySecret = getEnv("APP_INTEGRITY_SECRET", "a-very-secret-string-for-app-integrity")
 	productsUrl = "https://shop.3839.com/html/js/products.js"
@@ -90,6 +102,20 @@ func init() {
 
 	extractRe = `[&?]comm_id=([^&]+)`
 	extractS = `"s":\s*"?([^"]+)"?`
+
+	// PostgreSQL config
+	postgresHost = getEnv("POSTGRES_HOST", "localhost")
+	postgresPort = getEnv("POSTGRES_PORT", "5432")
+	postgresUser = getEnv("POSTGRES_USER", "user")
+	postgresPassword = getEnv("POSTGRES_PASSWORD", "password")
+	postgresDbname = getEnv("POSTGRES_DBNAME", "forum")
+
+	taskStartIDStr := getEnv("TASK_START_ID", "44000")
+	taskStartID, err = strconv.Atoi(taskStartIDStr)
+	if err != nil {
+		log.Printf("无效的 TASK_START_ID 值 '%s'，将使用默认值 44000。错误: %v", taskStartIDStr, err)
+		taskStartID = 44000
+	}
 
 	log.Println("配置已从环境变量加载")
 }

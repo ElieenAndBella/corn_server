@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -89,5 +91,266 @@ func appIntegrityMiddleware() gin.HandlerFunc {
 		}
 
 		c.Next()
+	}
+}
+
+// 检查用户是否拥有访问taie的权限
+func taiePermissionMiddlerware(force bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if force {
+			if keyData["useTaie"] != "true" {
+				fmt.Printf("Access denied for key %s: useTaie permission not granted\n", longTermKey)
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+				return
+			}
+		} else {
+			if keyData["useTaie"] != "true" {
+				c.Set("useTaie", false)
+			} else {
+				c.Set("useTaie", true)
+			}
+		}
+
+		c.Next()
+	}
+}
+
+// 检查用户是否拥有商店奖券的权限
+func shopPermissionMiddlerware(force bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if force {
+			if keyData["useShop"] != "true" {
+				fmt.Printf("Access denied for key %s: useShop permission not granted\n", longTermKey)
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+				return
+			}
+		} else {
+			if keyData["useShop"] != "true" {
+				c.Set("useShop", false)
+			} else {
+				c.Set("useShop", true)
+			}
+		}
+
+		c.Next()
+	}
+}
+
+// 检查用户是否拥有亮评的权限
+func lightPermissionMiddlerware(force bool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if force {
+			if keyData["useLight"] != "true" {
+				fmt.Printf("Access denied for key %s: useLight permission not granted\n", longTermKey)
+				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+				return
+			}
+		} else {
+			if keyData["useLight"] != "true" {
+				c.Set("useLight", false)
+			} else {
+				c.Set("useLight", true)
+			}
+		}
+
+		c.Next()
+	}
+}
+
+// activitiesPermissionMiddleware 检查用户是否拥有访问活动的权限
+func activitiesPermissionMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if keyData["useActivities"] != "true" {
+			fmt.Printf("Access denied for key %s: useActivities permission not granted\n", longTermKey)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// cyberPermissionMiddleware 检查用户是否有构造安装包的权限
+func cyberPermissionMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if keyData["useCyber"] != "true" {
+			fmt.Printf("Access denied for key %s: useCyber permission not granted\n", longTermKey)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func wooPermissionMiddlerware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if keyData["useWoo"] != "true" {
+			fmt.Printf("Access denied for key %s: useWoo permission not granted\n", longTermKey)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func wooProPermissionMiddlerware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if keyData["useWooPro"] != "true" {
+			fmt.Printf("Access denied for key %s: useWoo permission not granted\n", longTermKey)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+func whiteUserMiddlerware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		longTermKey, exists := c.Get("longTermKey")
+		if !exists {
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Internal server error: authentication key missing"})
+			return
+		}
+
+		keyData, err := swordRdb.HGetAll(ctx, longTermKey.(string)).Result()
+		if err != nil {
+			fmt.Printf("Failed to retrieve key data from Redis for %s: %v\n", longTermKey, err)
+			c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify permissions"})
+			return
+		}
+
+		if keyData["whitelisted"] != "true" {
+			fmt.Printf("Access denied for key %s: useWoo permission not granted\n", longTermKey)
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "You do not have permission to access this resource"})
+			return
+		}
+
+		c.Next()
+	}
+}
+
+// encryptionMiddleware	响应加密中间件
+func encryptionMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		c.Next()
+
+		longTermKey, _ := c.Get("longTermKey")
+		dataToEncrypt, exists := c.Get("dataToEncrypt")
+
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No data to encrypt"})
+			return
+		}
+
+		log.Printf("本次响应: %v", dataToEncrypt)
+		jsonData, err := json.Marshal(dataToEncrypt)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to serialize data"})
+			return
+		}
+
+		encryptionKey := []byte(longTermKey.(string))
+		encryptedPayload, err := encrypt(jsonData, encryptionKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Encryption failed: %v", err)})
+			return
+		}
+
+		c.Status(http.StatusOK)
+		c.JSON(http.StatusOK, EncryptedResponse{Payload: encryptedPayload})
 	}
 }
